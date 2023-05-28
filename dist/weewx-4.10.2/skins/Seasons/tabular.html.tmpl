@@ -1,0 +1,37 @@
+## Copyright 2017 Tom Keffer, Matthew Wall
+## Distributed under terms of GPLv3.  See LICENSE.txt for your rights.
+#errorCatcher Echo
+#encoding UTF-8
+
+<!DOCTYPE html>
+<html lang="$lang">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>$station.location</title>
+    <link rel="icon" type="image/png" href="favicon.ico" />
+    <link rel="stylesheet" type="text/css" href="seasons.css"/>
+    #if $station.station_url
+    <link rel="canonical" href="$station.station_url/$filename" />
+    #end if
+    <script type="text/javascript" src="seasons.js"></script>
+    <style>
+.tabular {
+  font-family: monospace;
+  white-space: pre;
+}
+    </style>
+  </head>
+
+  <body onload="setup();">
+    #include "titlebar.inc"
+    
+    <div id="contents">
+      <p><a href="index.html">&#10096; $gettext("Current Conditions")</a></p>
+      <div id="report" class="tabular"></div>
+    </div>
+
+  </body>
+  <script>
+load_file('report', 'report');
+  </script>
+</html>

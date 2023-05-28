@@ -1,7 +1,7 @@
 FROM alpine:3.17.0
 MAINTAINER Tom Mitchell "tom@tom.org"
 
-ENV WEEWX_VERSION=4.10.0
+ENV WEEWX_VERSION=4.10.2
 ENV HOME=/home/weewx
 ENV TZ=America/New_York
 

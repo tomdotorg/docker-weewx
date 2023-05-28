@@ -1,0 +1,10 @@
+Metadata-Version: 1.0
+Name: weewx
+Version: 4.10.2
+Summary: The WeeWX weather software system
+Home-page: http://www.weewx.com
+Author: Tom Keffer
+Author-email: tkeffer@gmail.com
+License: GPLv3
+Description: WeeWX interacts with a weather station to produce graphs, reports, and HTML pages.  WeeWX can upload data to services such as the WeatherUnderground, PWSweather.com, or CWOP.
+Platform: UNKNOWN

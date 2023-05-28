@@ -1,0 +1,1210 @@
+#!/usr/bin/perl
+# logwatch script to process weewx log files
+# Copyright 2013 Matthew Wall
+
+# FIXME: break this into modules instead of a single, monolithic blob
+
+use strict;
+
+my %counts;
+my %errors;
+
+# keys for individual counts
+my $STARTUPS = 'engine: startups';
+my $HUP_RESTARTS = 'engine: restart from HUP';
+my $KBD_INTERRUPTS = 'engine: keyboard interrupts';
+my $RESTARTS = 'engine: restarts';
+my $GARBAGE = 'engine: Garbage collected';
+my $ARCHIVE_RECORDS_ADDED = 'archive: records added';
+my $IMAGES_GENERATED = 'imagegenerator: images generated';
+my $FILES_GENERATED = 'filegenerator: files generated';
+my $FILES_COPIED = 'copygenerator: files copied';
+my $RECORDS_PUBLISHED = 'restful: records published';
+my $RECORDS_SKIPPED = 'restful: records skipped';
+my $RECORDS_FAILED = 'restful: publish failed';
+my $FORECAST_RECORDS = 'forecast: records generated';
+my $FORECAST_PRUNINGS = 'forecast: prunings';
+my $FORECAST_DOWNLOADS = 'forecast: downloads';
+my $FORECAST_SAVED = 'forecast: records saved';
+my $FTP_UPLOADS = 'ftp: files uploaded';
+my $FTP_FAILS = 'ftp: failures';
+my $RSYNC_UPLOADS = 'rsync: files uploaded';
+my $RSYNC_FAILS = 'rsync: failures';
+my $FOUSB_UNSTABLE_READS = 'fousb: unstable reads';
+my $FOUSB_MAGIC_NUMBERS = 'fousb: unrecognised magic number';
+my $FOUSB_RAIN_COUNTER = 'fousb: rain counter decrement';
+my $FOUSB_SUSPECTED_BOGUS = 'fousb: suspected bogus data';
+my $FOUSB_LOST_LOG_SYNC = 'fousb: lost log sync';
+my $FOUSB_LOST_SYNC = 'fousb: lost sync';
+my $FOUSB_MISSED_DATA = 'fousb: missed data';
+my $FOUSB_STATION_SYNC = 'fousb: station sync';
+my $WS23XX_CONNECTION_CHANGE = 'ws23xx: connection change';
+my $WS23XX_INVALID_WIND = 'ws23xx: invalid wind reading';
+my $ACURITE_DODGEY_DATA = 'acurite: R1: ignoring dodgey data';
+my $ACURITE_BAD_R1_LENGTH = 'acurite: R1: bad length';
+my $ACURITE_BAD_R2_LENGTH = 'acurite: R2: bad length';
+my $ACURITE_FAILED_USB_CONNECT = 'acurite: Failed attempt';
+my $ACURITE_STALE_DATA = 'acurite: R1: ignoring stale data';
+my $ACURITE_NO_SENSORS = 'acurite: R1: no sensors found';
+my $ACURITE_BOGUS_STRENGTH = 'acurite: R1: bogus signal strength';
+
+# BARO CHARGER DOWNLOAD DST HEADER LOGINT MAX MEM MIN NOW STATION TIME UNITS RAIN VERSION
+
+my $CC3000_VALUES_HEADER_MISMATCHES = 'cc3000: Values/Header mismatch';
+
+# BARO=XX
+my $CC3000_BARO_SET_CMD_ECHO_TIMED_OUT = 'cc3000: BARO=XX cmd echo timed out';
+my $CC3000_BARO_SET_MISSING_COMMAND_ECHO = 'cc3000: BARO=XX echoed as empty string';
+my $CC3000_BARO_SET_SUCCESSFUL_RETRIES = 'cc3000: BARO=XX successful retries';
+my $CC3000_BARO_SET_FAILED_RETRIES = 'cc3000: BARO=XX failed retries';
+
+# BARO
+my $CC3000_BARO_CMD_ECHO_TIMED_OUT = 'cc3000: BARO cmd echo timed out';
+my $CC3000_BARO_MISSING_COMMAND_ECHO = 'cc3000: BARO echoed as empty string';
+my $CC3000_BARO_SUCCESSFUL_RETRIES = 'cc3000: BARO successful retries';
+my $CC3000_BARO_FAILED_RETRIES = 'cc3000: BARO failed retries';
+
+# CHARGER
+my $CC3000_CHARGER_CMD_ECHO_TIMED_OUT = 'cc3000: CHARGER cmd echo timed out';
+my $CC3000_CHARGER_MISSING_COMMAND_ECHO = 'cc3000: CHARGER echoed as empty string';
+my $CC3000_CHARGER_SUCCESSFUL_RETRIES = 'cc3000: CHARGER successful retries';
+my $CC3000_CHARGER_FAILED_RETRIES = 'cc3000: CHARGER failed retries';
+
+# DOWNLOAD=XX
+my $CC3000_DOWNLOAD_XX_CMD_ECHO_TIMED_OUT = 'cc3000: DOWNLOAD=XX cmd echo timed out';
+my $CC3000_DOWNLOAD_XX_MISSING_COMMAND_ECHO = 'cc3000: DOWNLOAD=XX echoed as empty string';
+my $CC3000_DOWNLOAD_XX_SUCCESSFUL_RETRIES = 'cc3000: DOWNLOAD=XX successful retries';
+my $CC3000_DOWNLOAD_XX_FAILED_RETRIES = 'cc3000: DOWNLOAD=XX failed retries';
+
+# DOWNLOAD
+my $CC3000_DOWNLOAD_CMD_ECHO_TIMED_OUT = 'cc3000: DOWNLOAD cmd echo timed out';
+my $CC3000_DOWNLOAD_MISSING_COMMAND_ECHO = 'cc3000: DOWNLOAD echoed as empty string';
+my $CC3000_DOWNLOAD_SUCCESSFUL_RETRIES = 'cc3000: DOWNLOAD successful retries';
+my $CC3000_DOWNLOAD_FAILED_RETRIES = 'cc3000: DOWNLOAD failed retries';
+
+# DST=?
+my $CC3000_DST_CMD_ECHO_TIMED_OUT = 'cc3000: DST=? cmd echo timed out';
+my $CC3000_DST_MISSING_COMMAND_ECHO = 'cc3000: DST=? echoed as empty string';
+my $CC3000_DST_SUCCESSFUL_RETRIES = 'cc3000: DST=? successful retries';
+my $CC3000_DST_FAILED_RETRIES = 'cc3000: DST=? failed retries';
+
+# DST=XX
+my $CC3000_DST_SET_CMD_ECHO_TIMED_OUT = 'cc3000: DST=XX cmd echo timed out';
+my $CC3000_DST_SET_MISSING_COMMAND_ECHO = 'cc3000: DST=XX echoed as empty string';
+my $CC3000_DST_SET_SUCCESSFUL_RETRIES = 'cc3000: DST=XX successful retries';
+my $CC3000_DST_SET_FAILED_RETRIES = 'cc3000: DST=XX failed retries';
+
+# ECHO=?
+my $CC3000_ECHO_QUERY_CMD_ECHO_TIMED_OUT = 'cc3000: ECHO=? cmd echo timed out';
+my $CC3000_ECHO_QUERY_MISSING_COMMAND_ECHO = 'cc3000: ECHO=? echoed as empty string';
+my $CC3000_ECHO_QUERY_SUCCESSFUL_RETRIES = 'cc3000: ECHO=? successful retries';
+my $CC3000_ECHO_QUERY_FAILED_RETRIES = 'cc3000: ECHO=? failed retries';
+
+# ECHO=XX
+my $CC3000_ECHO_XX_CMD_ECHO_TIMED_OUT = 'cc3000: ECHO=XX cmd echo timed out';
+my $CC3000_ECHO_XX_MISSING_COMMAND_ECHO = 'cc3000: ECHO=XX echoed as empty string';
+my $CC3000_ECHO_XX_SUCCESSFUL_RETRIES = 'cc3000: ECHO=XX successful retries';
+my $CC3000_ECHO_XX_FAILED_RETRIES = 'cc3000: ECHO=XX failed retries';
+
+# HEADER
+my $CC3000_HEADER_CMD_ECHO_TIMED_OUT = 'cc3000: HEADER cmd echo timed out';
+my $CC3000_HEADER_MISSING_COMMAND_ECHO = 'cc3000: HEADER echoed as empty string';
+my $CC3000_HEADER_SUCCESSFUL_RETRIES = 'cc3000: HEADER successful retries';
+my $CC3000_HEADER_FAILED_RETRIES = 'cc3000: HEADER failed retries';
+
+# LOGINT=?
+my $CC3000_LOGINT_CMD_ECHO_TIMED_OUT = 'cc3000: LOGINT=? cmd echo timed out';
+my $CC3000_LOGINT_MISSING_COMMAND_ECHO = 'cc3000: LOGINT=? echoed as empty string';
+my $CC3000_LOGINT_SUCCESSFUL_RETRIES = 'cc3000: LOGINT=? successful retries';
+my $CC3000_LOGINT_FAILED_RETRIES = 'cc3000: LOGINT=? failed retries';
+
+# LOGINT=XX
+my $CC3000_LOGINT_SET_CMD_ECHO_TIMED_OUT = 'cc3000: LOGINT=XX cmd echo timed out';
+my $CC3000_LOGINT_SET_MISSING_COMMAND_ECHO = 'cc3000: LOGINT=XX echoed as empty string';
+my $CC3000_LOGINT_SET_SUCCESSFUL_RETRIES = 'cc3000: LOGINT=XX successful retries';
+my $CC3000_LOGINT_SET_FAILED_RETRIES = 'cc3000: LOGINT=XX failed retries';
+
+# MAX=?
+my $CC3000_MAX_CMD_ECHO_TIMED_OUT = 'cc3000: MAX=? cmd echo timed out';
+my $CC3000_MAX_MISSING_COMMAND_ECHO = 'cc3000: MAX=? echoed as empty string';
+my $CC3000_MAX_SUCCESSFUL_RETRIES = 'cc3000: MAX=? successful retries';
+my $CC3000_MAX_FAILED_RETRIES = 'cc3000: MAX=? failed retries';
+
+# MAX=RESET
+my $CC3000_MAX_RESET_CMD_ECHO_TIMED_OUT = 'cc3000: MAX=RESET cmd echo timed out';
+my $CC3000_MAX_RESET_MISSING_COMMAND_ECHO = 'cc3000: MAX=RESET echoed as empty string';
+my $CC3000_MAX_RESET_SUCCESSFUL_RETRIES = 'cc3000: MAX=RESET successful retries';
+my $CC3000_MAX_RESET_FAILED_RETRIES = 'cc3000: MAX=RESET failed retries';
+
+# MEM=?
+my $CC3000_MEM_CMD_ECHO_TIMED_OUT = 'cc3000: MEM=? cmd echo timed out';
+my $CC3000_MEM_MISSING_COMMAND_ECHO = 'cc3000: MEM=? echoed as empty string';
+my $CC3000_MEM_SUCCESSFUL_RETRIES = 'cc3000: MEM=? successful retries';
+my $CC3000_MEM_FAILED_RETRIES = 'cc3000: MEM=? failed retries';
+
+# MEM=CLEAR
+my $CC3000_MEM_CLEAR_CMD_ECHO_TIMED_OUT = 'cc3000: MEM=CLEAR cmd echo timed out';
+my $CC3000_MEM_CLEAR_MISSING_COMMAND_ECHO = 'cc3000: MEM=CLEAR echoed as empty string';
+my $CC3000_MEM_CLEAR_SUCCESSFUL_RETRIES = 'cc3000: MEM=CLEAR successful retries';
+my $CC3000_MEM_CLEAR_FAILED_RETRIES = 'cc3000: MEM=CLEAR failed retries';
+
+# MIN=?
+my $CC3000_MIN_CMD_ECHO_TIMED_OUT = 'cc3000: MIN=? cmd echo timed out';
+my $CC3000_MIN_MISSING_COMMAND_ECHO = 'cc3000: MIN=? echoed as empty string';
+my $CC3000_MIN_SUCCESSFUL_RETRIES = 'cc3000: MIN=? successful retries';
+my $CC3000_MIN_FAILED_RETRIES = 'cc3000: MIN=? failed retries';
+
+# MIN=RESET
+my $CC3000_MIN_RESET_CMD_ECHO_TIMED_OUT = 'cc3000: MIN=RESET cmd echo timed out';
+my $CC3000_MIN_RESET_MISSING_COMMAND_ECHO = 'cc3000: MIN=RESET echoed as empty string';
+my $CC3000_MIN_RESET_SUCCESSFUL_RETRIES = 'cc3000: MIN=RESET successful retries';
+my $CC3000_MIN_RESET_FAILED_RETRIES = 'cc3000: MIN=RESET failed retries';
+
+# NOW
+my $CC3000_NOW_CMD_ECHO_TIMED_OUT = 'cc3000: NOW cmd echo timed out';
+my $CC3000_NOW_MISSING_COMMAND_ECHO = 'cc3000: NOW echoed as empty string';
+my $CC3000_NOW_SUCCESSFUL_RETRIES = 'cc3000: NOW successful retries';
+my $CC3000_NOW_FAILED_RETRIES = 'cc3000: NOW failed retries';
+
+# RAIN=RESET
+my $CC3000_RAIN_RESET_CMD_ECHO_TIMED_OUT = 'cc3000: RAIN=RESET cmd echo timed out';
+my $CC3000_RAIN_RESET_MISSING_COMMAND_ECHO = 'cc3000: RAIN=RESET echoed as empty string';
+my $CC3000_RAIN_RESET_SUCCESSFUL_RETRIES = 'cc3000: RAIN=RESET successful retries';
+my $CC3000_RAIN_RESET_FAILED_RETRIES = 'cc3000: RAIN=RESET failed retries';
+
+# RAIN
+my $CC3000_RAIN_CMD_ECHO_TIMED_OUT = 'cc3000: RAIN cmd echo timed out';
+my $CC3000_RAIN_MISSING_COMMAND_ECHO = 'cc3000: RAIN echoed as empty string';
+my $CC3000_RAIN_SUCCESSFUL_RETRIES = 'cc3000: RAIN successful retries';
+my $CC3000_RAIN_FAILED_RETRIES = 'cc3000: RAIN failed retries';
+
+# STATION=X
+my $CC3000_STATION_SET_CMD_ECHO_TIMED_OUT = 'cc3000: STATION=X cmd echo timed out';
+my $CC3000_STATION_SET_MISSING_COMMAND_ECHO = 'cc3000: STATION=X echoed as empty string';
+my $CC3000_STATION_SET_SUCCESSFUL_RETRIES = 'cc3000: STATION=X successful retries';
+my $CC3000_STATION_SET_FAILED_RETRIES = 'cc3000: STATION=X failed retries';
+
+# STATION
+my $CC3000_STATION_CMD_ECHO_TIMED_OUT = 'cc3000: STATION cmd echo timed out';
+my $CC3000_STATION_MISSING_COMMAND_ECHO = 'cc3000: STATION echoed as empty string';
+my $CC3000_STATION_SUCCESSFUL_RETRIES = 'cc3000: STATION successful retries';
+my $CC3000_STATION_FAILED_RETRIES = 'cc3000: STATION failed retries';
+
+# TIME=?
+my $CC3000_TIME_CMD_ECHO_TIMED_OUT = 'cc3000: TIME=? cmd echo timed out';
+my $CC3000_TIME_MISSING_COMMAND_ECHO = 'cc3000: TIME=? echoed as empty string';
+my $CC3000_TIME_SUCCESSFUL_RETRIES = 'cc3000: TIME=? successful retries';
+my $CC3000_TIME_FAILED_RETRIES = 'cc3000: TIME=? failed retries';
+
+# TIME=XX
+my $CC3000_TIME_SET_CMD_ECHO_TIMED_OUT = 'cc3000: TIME=XX cmd echo timed out';
+my $CC3000_TIME_SET_MISSING_COMMAND_ECHO = 'cc3000: TIME=XX echoed as empty string';
+my $CC3000_TIME_SET_SUCCESSFUL_RETRIES = 'cc3000: TIME=XX successful retries';
+my $CC3000_TIME_SET_FAILED_RETRIES = 'cc3000: TIME=XX failed retries';
+
+# UNITS=?
+my $CC3000_UNITS_CMD_ECHO_TIMED_OUT = 'cc3000: UNITS=? cmd echo timed out';
+my $CC3000_UNITS_MISSING_COMMAND_ECHO = 'cc3000: UNITS=? echoed as empty string';
+my $CC3000_UNITS_SUCCESSFUL_RETRIES = 'cc3000: UNITS=? successful retries';
+my $CC3000_UNITS_FAILED_RETRIES = 'cc3000: UNITS=? failed retries';
+
+# UNITS=XX
+my $CC3000_UNITS_SET_CMD_ECHO_TIMED_OUT = 'cc3000: UNITS=XX cmd echo timed out';
+my $CC3000_UNITS_SET_MISSING_COMMAND_ECHO = 'cc3000: UNITS=XX echoed as empty string';
+my $CC3000_UNITS_SET_SUCCESSFUL_RETRIES = 'cc3000: UNITS=XX successful retries';
+my $CC3000_UNITS_SET_FAILED_RETRIES = 'cc3000: UNITS=XX failed retries';
+
+# VERSION
+my $CC3000_VERSION_CMD_ECHO_TIMED_OUT = 'cc3000: VERSION cmd echo timed out';
+my $CC3000_VERSION_MISSING_COMMAND_ECHO = 'cc3000: VERSION echoed as empty string';
+my $CC3000_VERSION_SUCCESSFUL_RETRIES = 'cc3000: VERSION successful retries';
+my $CC3000_VERSION_FAILED_RETRIES = 'cc3000: VERSION failed retries';
+
+my $CC3000_GET_TIME_FAILED = 'cc3000: TIME get failed';
+
+my $CC3000_SET_TIME_SUCCEEDED = 'cc3000: TIME set succeeded';
+
+my $CC3000_MEM_CLEAR_SUCCEEDED = 'cc3000: MEM clear succeeded';
+
+my $CC3000_FAILED_CMD = 'cc3000: FAILED to Get Data';
+
+my $RSYNC_REPORT_CONN_TIMEOUT = 'rsync: report: connection timeout';
+my $RSYNC_REPORT_NO_ROUTE_TO_HOST = 'rsync: report: no route to host';
+
+my $RSYNC_GAUGE_DATA_NO_ROUTE_TO_HOST  = 'rsync: gauge-data: no route to host';
+my $RSYNC_GAUGE_DATA_CANT_RESOLVE_HOST = 'rsync: gauge-data: cannot resolve host';
+my $RSYNC_GAUGE_DATA_CONN_REFUSED      = 'rsync: gauge-data: connection_refused';
+my $RSYNC_GAUGE_DATA_CONN_TIMEOUT      = 'rsync: gauge-data: connection timeouts';
+my $RSYNC_GAUGE_DATA_IO_TIMEOUT        = 'rsync: gauge-data: IO timeout-data';
+my $RSYNC_GAUGE_DATA_SKIP_PACKET       = 'rsync: gauge-data: skipped packets';
+my $RSYNC_GAUGE_DATA_WRITE_ERRORS      = 'rsync: gauge-data: write errors';
+my $RSYNC_GAUGE_DATA_REMOTE_CLOSED     = 'rsync: gauge-data: closed by remote host';
+
+# any lines that do not match the patterns we define
+my @unmatched = ();
+
+# track individual publishing counts
+my %publish_counts = ();
+my %publish_fails = ();
+
+# track individual forecast stats
+my %forecast_records = ();
+my %forecast_prunings = ();
+my %forecast_downloads = ();
+my %forecast_saved = ();
+
+my %summaries = (
+    'counts', \%counts,
+    'errors', \%errors,
+    'uploads', \%publish_counts,
+    'upload failures', \%publish_fails,
+    'forecast records generated', \%forecast_records,
+    'forecast prunings', \%forecast_prunings,
+    'forecast downloads', \%forecast_downloads,
+    'forecast records saved', \%forecast_saved
+    );
+
+# track upload errors to help diagnose network/server issues
+my @upload_errors = ();
+
+# keep details of ws23xx behavior
+my @ws23xx_conn_change = ();
+my @ws23xx_invalid_wind = ();
+
+# keep details of fine offset behavior
+my @fousb_station_status = ();
+my @fousb_unstable_reads = ();
+my @fousb_magic_numbers = ();
+my @fousb_rain_counter = ();
+my @fousb_suspected_bogus = ();
+
+# keep details of acurite behavior
+my @acurite_dodgey_data = ();
+my @acurite_r1_length = ();
+my @acurite_r2_length = ();
+my @acurite_failed_usb = ();
+my @acurite_stale_data = ();
+my @acurite_no_sensors = ();
+my @acurite_bogus_strength = ();
+
+# keep details of PurpleAir messages
+my @purpleair = ();
+
+# keep details of rain counter resets
+my @rain_counter_reset = ();
+
+# keep details of cc3000 behavior
+my @cc3000_timings = ();
+my @cc3000_mem_clear_info = ();
+my @cc3000_retry_info = ();
+
+my %itemized = (
+    'upload errors', \@upload_errors,
+    'fousb station status', \@fousb_station_status,
+    'fousb unstable reads', \@fousb_unstable_reads,
+    'fousb magic numbers', \@fousb_magic_numbers,
+    'fousb rain counter', \@fousb_rain_counter,
+    'fousb suspected bogus data', \@fousb_suspected_bogus,
+    'ws23xx connection changes', \@ws23xx_conn_change,
+    'ws23xx invalid wind', \@ws23xx_invalid_wind,
+    'acurite dodgey data', \@acurite_dodgey_data,
+    'acurite bad R1 length', \@acurite_r1_length,
+    'acurite bad R2 length', \@acurite_r2_length,
+    'acurite failed usb connect', \@acurite_failed_usb,
+    'acurite stale_data', \@acurite_stale_data,
+    'acurite no sensors', \@acurite_no_sensors,
+    'acurite bogus signal strength', \@acurite_bogus_strength,
+    'rain counter reset', \@rain_counter_reset,
+    'PurpleAir messsages', \@purpleair,
+    'cc3000 Retry Info', \@cc3000_retry_info,
+    'cc3000 Command Timings: flush/cmd/echo/values', \@cc3000_timings,
+    'cc3000 Mem Clear Info', \@cc3000_mem_clear_info,
+    );
+
+my $clocksum = 0;
+my $clockmin = 0;
+my $clockmax = 0;
+my $clockcount = 0;
+
+while(defined($_ = <STDIN>)) {
+    chomp;
+    if (/engine: Starting up weewx version/) {
+        $counts{$STARTUPS} += 1;
+    } elsif (/engine: Received signal HUP/) {
+        $counts{$HUP_RESTARTS} += 1;
+    } elsif (/engine: Keyboard interrupt/) {
+        $counts{$KBD_INTERRUPTS} += 1;
+    } elsif (/engine: retrying/) {
+        $counts{$RESTARTS} += 1;
+    } elsif (/engine: Garbage collected (\d+) objects/) {
+        $counts{$GARBAGE} += $1;
+    } elsif (/engine: Clock error is ([0-9,.-]+)/) {
+        $clocksum += $1;
+        $clockmin = $1 if $1 < $clockmin;
+        $clockmax = $1 if $1 > $clockmax;
+        $clockcount += 1;
+    } elsif (/manager: Added record/ || /archive: added record/) {
+        $counts{$ARCHIVE_RECORDS_ADDED} += 1;
+    } elsif (/imagegenerator: Generated (\d+) images/) {
+        $counts{$IMAGES_GENERATED} += $1;
+    } elsif (/imagegenerator: aggregate interval required for aggregate type/ ||
+             /imagegenerator: line type \S+ skipped/) {
+        $errors{$_} = $errors{$_} ? $errors{$_} + 1 : 1;
+    } elsif (/cheetahgenerator: Generated (\d+)/ ||
+             /cheetahgenerator: generated (\d+)/ ||
+             /filegenerator: generated (\d+)/) {
+        $counts{$FILES_GENERATED} += $1;
+    } elsif (/reportengine: Copied (\d+) files/) {
+        $counts{$FILES_COPIED} += $1;
+    } elsif (/restful: Skipped record/) {
+        $counts{$RECORDS_SKIPPED} += 1;
+    } elsif (/restful: Published record/) {
+        $counts{$RECORDS_PUBLISHED} += 1;
+    } elsif (/ftpupload: Uploaded file/) {
+        $counts{$FTP_UPLOADS} += 1;
+    } elsif (/ftpupload: Failed to upload file/) {
+        $counts{$FTP_FAILS} += 1;
+    } elsif (/rsync\'d (\d+) files/) {
+        $counts{$RSYNC_UPLOADS} += $1;
+    } elsif (/rsyncupload: rsync reported errors/) {
+        $counts{$RSYNC_FAILS} += 1;
+    } elsif (/restful: Unable to publish record/) {
+        if (/restful: Unable to publish record \d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d \S\S\S \(\d+\) to (\S+)/) {
+            $publish_fails{$1} += 1;
+        }
+        $counts{$RECORDS_FAILED} += 1;
+        push @upload_errors, $_;
+    } elsif (/restx: ([^:]*): Published record/) {
+        $publish_counts{$1} += 1;
+        $counts{$RECORDS_PUBLISHED} += 1;
+    } elsif (/restx: ([^:]*): Failed to publish/) {
+        $publish_fails{$1} += 1;
+        $counts{$RECORDS_FAILED} += 1;
+        push @upload_errors, $_;
+    } elsif (/fousb: station status/) {
+        push @fousb_station_status, $_;
+    } elsif (/fousb: unstable read: blocks differ/) {
+        push @fousb_unstable_reads, $_;
+        $counts{$FOUSB_UNSTABLE_READS} += 1;
+    } elsif (/fousb: unrecognised magic number/) {
+        push @fousb_magic_numbers, $_;
+        $counts{$FOUSB_MAGIC_NUMBERS} += 1;
+    } elsif (/fousb: rain counter decrement/ ||
+             /fousb: ignoring spurious rain counter decrement/) {
+        push @fousb_rain_counter, $_;
+        $counts{$FOUSB_RAIN_COUNTER} += 1;
+    } elsif (/fousb:.*ignoring suspected bogus data/) {
+        push @fousb_suspected_bogus, $_;
+        $counts{$FOUSB_SUSPECTED_BOGUS} += 1;
+    } elsif (/fousb: lost log sync/) {
+        $counts{$FOUSB_LOST_LOG_SYNC} += 1;
+    } elsif (/fousb: lost sync/) {
+        $counts{$FOUSB_LOST_SYNC} += 1;
+    } elsif (/fousb: missed data/) {
+        $counts{$FOUSB_MISSED_DATA} += 1;
+    } elsif (/fousb: synchronising to the weather station/) {
+        $counts{$FOUSB_STATION_SYNC} += 1;
+    } elsif (/ws23xx: connection changed from/) {
+        push @ws23xx_conn_change, $_;
+        $counts{$WS23XX_CONNECTION_CHANGE} += 1;
+    } elsif (/ws23xx: invalid wind reading/) {
+        push @ws23xx_invalid_wind, $_;
+        $counts{$WS23XX_INVALID_WIND} += 1;
+    } elsif (/acurite: R1: ignoring dodgey data/) {
+        push @acurite_dodgey_data, $_;
+        $counts{$ACURITE_DODGEY_DATA} += 1;
+    } elsif (/acurite: R1: bad length/) {
+        push @acurite_r1_length, $_;
+        $counts{$ACURITE_BAD_R1_LENGTH} += 1;
+    } elsif (/acurite: R2: bad length/) {
+        push @acurite_r2_length, $_;
+        $counts{$ACURITE_BAD_R2_LENGTH} += 1;
+    } elsif (/acurite: Failed attempt/) {
+        push @acurite_failed_usb, $_;
+        $counts{$ACURITE_FAILED_USB_CONNECT} += 1;
+    } elsif (/acurite: R1: ignoring stale data/) {
+        push @acurite_stale_data, $_;
+        $counts{$ACURITE_STALE_DATA} += 1;
+    } elsif (/acurite: R1: no sensors found/) {
+        push @acurite_no_sensors, $_;
+        $counts{$ACURITE_NO_SENSORS} += 1;
+    } elsif (/acurite: R1: bogus signal strength/) {
+        push @acurite_bogus_strength, $_;
+        $counts{$ACURITE_BOGUS_STRENGTH} += 1;
+    } elsif (/purpleair: /) {
+        push @purpleair, $_;
+    } elsif (/cc3000: Values\/header mismatch/) {
+        $counts{$CC3000_VALUES_HEADER_MISMATCHES} += 1;
+
+    # BARO CHARGER DOWNLOAD DST HEADER LOGINT MAX MEM MIN NOW STATION TIME UNITS RAIN VERSION
+    # Example
+    # cc3000: NOW: times: 0.000050 0.000091 1.027548 -retrying-
+    # cc3000: NOW: Reading cmd echo timed out (1.027548 seconds), retrying.
+    # cc3000: NOW: Accepting empty string as cmd echo.
+    # cc3000: NOW: Retry worked.  Total tries: 2
+
+    # BARO=XX
+    } elsif (/cc3000: BARO=.*: Reading cmd echo timed out/) {
+        $counts{$CC3000_BARO_SET_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: BARO=.*: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_BARO_SET_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: BARO=.*: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_BARO_SET_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: BARO=.*: Retry failed./) {
+        $counts{$CC3000_BARO_SET_FAILED_RETRIES} += 1;
+
+    # BARO
+    } elsif (/cc3000: BARO: Reading cmd echo timed out/) {
+        $counts{$CC3000_BARO_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: BARO: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_BARO_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: BARO: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_BARO_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: BARO: Retry failed./) {
+        $counts{$CC3000_BARO_FAILED_RETRIES} += 1;
+
+    # CHARGER
+    } elsif (/cc3000: CHARGER: Reading cmd echo timed out/) {
+        $counts{$CC3000_CHARGER_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: CHARGER: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_CHARGER_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: CHARGER: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_CHARGER_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: CHARGER: Retry failed./) {
+        $counts{$CC3000_CHARGER_FAILED_RETRIES} += 1;
+
+    # DOWNLOAD=XX
+    } elsif (/cc3000: DOWNLOAD=.*: Reading cmd echo timed out/) {
+        $counts{$CC3000_DOWNLOAD_XX_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: DOWNLOAD=.*: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_DOWNLOAD_XX_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: DOWNLOAD=.*: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_DOWNLOAD_XX_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: DOWNLOAD=.*: Retry failed./) {
+        $counts{$CC3000_DOWNLOAD_XX_FAILED_RETRIES} += 1;
+
+    # DOWNLOAD
+    } elsif (/cc3000: DOWNLOAD: Reading cmd echo timed out/) {
+        $counts{$CC3000_DOWNLOAD_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: DOWNLOAD: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_DOWNLOAD_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: DOWNLOAD: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_DOWNLOAD_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: DOWNLOAD: Retry failed./) {
+        $counts{$CC3000_DOWNLOAD_FAILED_RETRIES} += 1;
+
+    # DST=?
+    } elsif (/cc3000: DST=\?: Reading cmd echo timed out/) {
+        $counts{$CC3000_DST_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: DST=\?: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_DST_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: DST=\?: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_DST_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: DST=\?: Retry failed./) {
+        $counts{$CC3000_DST_FAILED_RETRIES} += 1;
+
+    # DST=XX
+    } elsif (/cc3000: DST=.*: Reading cmd echo timed out/) {
+        $counts{$CC3000_DST_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: DST=.*: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_DST_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: DST=.*: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_DST_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: DST=.*: Retry failed./) {
+        $counts{$CC3000_DST_FAILED_RETRIES} += 1;
+
+    # ECHO=?
+    } elsif (/cc3000: ECHO=\?: Reading cmd echo timed out/) {
+        $counts{$CC3000_ECHO_QUERY_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: ECHO=\?: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_ECHO_QUERY_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: ECHO=\?: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_ECHO_QUERY_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: ECHO=\?: Retry failed./) {
+        $counts{$CC3000_ECHO_QUERY_FAILED_RETRIES} += 1;
+
+    # ECHO=XX
+    } elsif (/cc3000: ECHO=.*: Reading cmd echo timed out/) {
+        $counts{$CC3000_ECHO_XX_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: ECHO=.*: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_ECHO_XX_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: ECHO=.*: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_ECHO_XX_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: ECHO=.*: Retry failed./) {
+        $counts{$CC3000_ECHO_XX_FAILED_RETRIES} += 1;
+
+    # HEADER
+    } elsif (/cc3000: HEADER: Reading cmd echo timed out/) {
+        $counts{$CC3000_HEADER_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: HEADER: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_HEADER_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: HEADER: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_HEADER_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: HEADER: Retry failed./) {
+        $counts{$CC3000_HEADER_FAILED_RETRIES} += 1;
+
+    # LOGINT=?
+    } elsif (/cc3000: LOGINT=\?: Reading cmd echo timed out/) {
+        $counts{$CC3000_LOGINT_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: LOGINT=\?: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_LOGINT_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: LOGINT=\?: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_LOGINT_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: LOGINT=\?: Retry failed./) {
+        $counts{$CC3000_LOGINT_FAILED_RETRIES} += 1;
+
+    # LOGINT=XX
+    } elsif (/cc3000: LOGINT=.*: Reading cmd echo timed out/) {
+        $counts{$CC3000_LOGINT_SET_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: LOGINT=.*: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_LOGINT_SET_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: LOGINT=.*: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_LOGINT_SET_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: LOGINT=.*: Retry failed./) {
+        $counts{$CC3000_LOGINT_SET_FAILED_RETRIES} += 1;
+
+    # MAX=?
+    } elsif (/cc3000: MAX=\?: Reading cmd echo timed out/) {
+        $counts{$CC3000_MAX_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: MAX=\?: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_MAX_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: MAX=\?: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_MAX_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: MAX=\?: Retry failed./) {
+        $counts{$CC3000_MAX_FAILED_RETRIES} += 1;
+
+    # MAX=RESET
+    } elsif (/cc3000: MAX=RESET: Reading cmd echo timed out/) {
+        $counts{$CC3000_MAX_RESET_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: MAX=RESET: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_MAX_RESET_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: MAX=RESET: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_MAX_RESET_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: MAX=RESET: Retry failed./) {
+        $counts{$CC3000_MAX_RESET_FAILED_RETRIES} += 1;
+
+    # MEM=?
+    } elsif (/cc3000: MEM=\?: Reading cmd echo timed out/) {
+        $counts{$CC3000_MEM_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: MEM=\?: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_MEM_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: MEM=\?: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_MEM_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: MEM=\?: Retry failed./) {
+        $counts{$CC3000_MEM_FAILED_RETRIES} += 1;
+
+    # MEM=CLEAR
+    } elsif (/cc3000: MEM=CLEAR: Reading cmd echo timed out/) {
+        $counts{$CC3000_MEM_CLEAR_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: MEM=CLEAR: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_MEM_CLEAR_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: MEM=CLEAR: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_MEM_CLEAR_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: MEM=CLEAR: Retry failed./) {
+        $counts{$CC3000_MEM_CLEAR_FAILED_RETRIES} += 1;
+
+    # MIN=?
+    } elsif (/cc3000: MIN=\?: Reading cmd echo timed out/) {
+        $counts{$CC3000_MIN_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: MIN=\?: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_MIN_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: MIN=\?: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_MIN_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: MIN=\?: Retry failed./) {
+        $counts{$CC3000_MIN_FAILED_RETRIES} += 1;
+
+    # MIN=RESET
+    } elsif (/cc3000: MIN=RESET: Reading cmd echo timed out/) {
+        $counts{$CC3000_MIN_RESET_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: MIN=RESET: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_MIN_RESET_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: MIN=RESET: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_MIN_RESET_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: MIN=RESET: Retry failed./) {
+        $counts{$CC3000_MIN_RESET_FAILED_RETRIES} += 1;
+
+    # NOW
+    } elsif (/cc3000: NOW: Reading cmd echo timed out/) {
+        $counts{$CC3000_NOW_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: NOW: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_NOW_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: NOW: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_NOW_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: NOW: Retry failed./) {
+        $counts{$CC3000_NOW_FAILED_RETRIES} += 1;
+
+    # RAIN=RESET
+    } elsif (/cc3000: RAIN=RESET: Reading cmd echo timed out/) {
+        $counts{$CC3000_RAIN_RESET_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: RAIN=RESET: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_RAIN_RESET_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: RAIN=RESET: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_RAIN_RESET_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: RAIN=RESET: Retry failed./) {
+        $counts{$CC3000_RAIN_RESET_FAILED_RETRIES} += 1;
+
+    # RAIN
+    } elsif (/cc3000: RAIN: Reading cmd echo timed out/) {
+        $counts{$CC3000_RAIN_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: RAIN: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_RAIN_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: RAIN: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_RAIN_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: RAIN: Retry failed./) {
+        $counts{$CC3000_RAIN_FAILED_RETRIES} += 1;
+
+    # STATION=X
+    } elsif (/cc3000: STATION=.*: Reading cmd echo timed out/) {
+        $counts{$CC3000_STATION_SET_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: STATION=.*: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_STATION_SET_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: STATION=.*: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_STATION_SET_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: STATION=.*: Retry failed./) {
+        $counts{$CC3000_STATION_SET_FAILED_RETRIES} += 1;
+
+    # STATION
+    } elsif (/cc3000: STATION: Reading cmd echo timed out/) {
+        $counts{$CC3000_STATION_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: STATION: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_STATION_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: STATION: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_STATION_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: STATION: Retry failed./) {
+        $counts{$CC3000_STATION_FAILED_RETRIES} += 1;
+
+    # TIME=?
+    } elsif (/cc3000: TIME=\?: Reading cmd echo timed out/) {
+        $counts{$CC3000_TIME_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: TIME=\?: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_TIME_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: TIME=\?: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_TIME_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: TIME=\?: Retry failed./) {
+        $counts{$CC3000_TIME_FAILED_RETRIES} += 1;
+
+    # TIME=XX
+    } elsif (/cc3000: TIME=.*: Reading cmd echo timed out/) {
+        $counts{$CC3000_TIME_SET_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: TIME=.*: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_TIME_SET_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: TIME=.*: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_TIME_SET_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: TIME=.*: Retry failed./) {
+        $counts{$CC3000_TIME_SET_FAILED_RETRIES} += 1;
+
+    # UNITS=?
+    } elsif (/cc3000: UNITS=\?: Reading cmd echo timed out/) {
+        $counts{$CC3000_UNITS_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: UNITS=\?: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_UNITS_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: UNITS=\?: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_UNITS_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: UNITS=\?: Retry failed./) {
+        $counts{$CC3000_UNITS_FAILED_RETRIES} += 1;
+
+    # UNITS=XX
+    } elsif (/cc3000: UNITS=.*: Reading cmd echo timed out/) {
+        $counts{$CC3000_UNITS_SET_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: UNITS=.*: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_UNITS_SET_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: UNITS=.*: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_UNITS_SET_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: UNITS=.*: Retry failed./) {
+        $counts{$CC3000_UNITS_SET_FAILED_RETRIES} += 1;
+
+    # VERSION
+    } elsif (/cc3000: VERSION: Reading cmd echo timed out/) {
+        $counts{$CC3000_VERSION_CMD_ECHO_TIMED_OUT} += 1;
+    } elsif (/cc3000: VERSION: Accepting empty string as cmd echo./) {
+        $counts{$CC3000_VERSION_MISSING_COMMAND_ECHO} += 1;
+    } elsif (/cc3000: VERSION: Retry worked./) {
+        push @cc3000_retry_info, $_;
+        $counts{$CC3000_VERSION_SUCCESSFUL_RETRIES} += 1;
+    } elsif (/cc3000: VERSION: Retry failed./) {
+        $counts{$CC3000_VERSION_FAILED_RETRIES} += 1;
+
+    } elsif (/engine: Error reading time: Failed to get time/) {
+        $counts{$CC3000_GET_TIME_FAILED} += 1;
+
+    } elsif (/cc3000: Set time to /) {
+        $counts{$CC3000_SET_TIME_SUCCEEDED} += 1;
+
+    } elsif (/cc3000: MEM=CLEAR succeeded./) {
+        $counts{$CC3000_MEM_CLEAR_SUCCEEDED} += 1;
+
+    } elsif (/cc3000: Failed attempt .* of .* to get data: command: Command failed/) {
+        $counts{$CC3000_FAILED_CMD} += 1;
+
+    # cc3000: NOW: times: 0.000036 0.000085 0.022008 0.027476
+    } elsif (/cc3000: .*: times: .*/) {
+        push @cc3000_timings, $_;
+
+    # cc3000: Logger is at 11475 records, logger clearing threshold is 10000
+    } elsif (/cc3000: Logger is at.*/) {
+        push @cc3000_mem_clear_info, $_;
+    # cc3000: Clearing all records from logger
+    } elsif (/cc3000: Clearing all records from logger/) {
+        push @cc3000_mem_clear_info, $_;
+    # cc3000: MEM=CLEAR: The resetting of timeout to 20 took 0.001586 seconds.
+    # cc3000: MEM=CLEAR: The resetting of timeout to 1 took 0.001755 seconds.
+    } elsif (/cc3000: MEM=CLEAR: The resetting of timeout to .*/) {
+        push @cc3000_mem_clear_info, $_;
+
+    } elsif (/Rain counter reset detected:/) {
+        push @rain_counter_reset, $_;
+
+    } elsif (/html.*Connection timed out\. rsync: connection unexpectedly closed/) {
+        $counts{$RSYNC_REPORT_CONN_TIMEOUT} += 1;
+    } elsif (/public_html.*No route to host. rsync: connection unexpectedly closed/) {
+        $counts{$RSYNC_REPORT_NO_ROUTE_TO_HOST} += 1;
+
+    } elsif (/gauge-data\.txt.*No route to host.*rsync: connection unexpectedly closed/) {
+        $counts{$RSYNC_GAUGE_DATA_NO_ROUTE_TO_HOST} += 1;
+    } elsif (/gauge-data.txt.*Could not resolve hostname/) {
+        $counts{$RSYNC_GAUGE_DATA_CANT_RESOLVE_HOST} += 1;
+    } elsif (/gauge-data\.txt.*Connection refused.*rsync: connection unexpectedly closed/) {
+        $counts{$RSYNC_GAUGE_DATA_CONN_REFUSED} += 1;
+    } elsif (/gauge-data\.txt.*Connection timed out.*rsync: connection unexpectedly closed/) {
+        $counts{$RSYNC_GAUGE_DATA_CONN_TIMEOUT} += 1;
+    } elsif (/gauge-data\.txt.*rsync error: timeout in data send\/receive/) {
+        $counts{$RSYNC_GAUGE_DATA_IO_TIMEOUT} += 1;
+    } elsif (/rsync_data: skipping packet .* with age:/) {
+        $counts{$RSYNC_GAUGE_DATA_SKIP_PACKET} += 1;
+    } elsif (/rsyncupload:.*gauge-data\.txt'.*reported errors: rsync:.*write error:/) {
+        $counts{$RSYNC_GAUGE_DATA_WRITE_ERRORS} += 1;
+    } elsif (/rsyncupload:.*gauge-data.*closed by remote host/) {
+        $counts{$RSYNC_GAUGE_DATA_REMOTE_CLOSED} += 1;
+
+    } elsif (/forecast: .*Thread: ([^:]+): generated 1 forecast record/) {
+        $forecast_records{$1} += 1;
+        $counts{$FORECAST_RECORDS} += 1;
+    } elsif (/forecast: .*Thread: ([^:]+): got (\d+) forecast records/) {
+        $forecast_records{$1} += $2;
+        $counts{$FORECAST_RECORDS} += $2;
+    } elsif (/forecast: .*Thread: ([^:]+): deleted forecasts/) {
+        $forecast_prunings{$1} += 1;
+        $counts{$FORECAST_PRUNINGS} += 1;
+    } elsif (/forecast: .*Thread: ([^:]+): downloading forecast/) {
+        $forecast_downloads{$1} += 1;
+        $counts{$FORECAST_DOWNLOADS} += 1;
+    } elsif (/forecast: .*Thread: ([^:]+): download forecast/) {
+        $forecast_downloads{$1} += 1;
+        $counts{$FORECAST_DOWNLOADS} += 1;
+    } elsif (/forecast: .*Thread: ([^:]+): saving (\d+) forecast records/) {
+        $forecast_saved{$1} += $2;
+        $counts{$FORECAST_SAVED} += $2;
+    } elsif (/awekas: Failed upload to (AWEKAS)/ ||
+             /cosm: Failed upload to (COSM)/ ||
+             /emoncms: Failed upload to (EmonCMS)/ ||
+             /owm: Failed upload to (OpenWeatherMap)/ ||
+             /seg: Failed upload to (SmartEnergyGroups)/ ||
+             /wbug: Failed upload to (WeatherBug)/) {
+        $publish_fails{$1} += 1;
+        push @upload_errors, $_;
+    } elsif (/last message repeated/ ||
+             /archive: Created and initialized/ ||
+             /reportengine: Running reports for latest time/ ||
+             /reportengine: Found configuration file/ ||
+             /ftpgenerator: FTP upload not requested/ ||
+             /reportengine: Running report / ||  # only when debug=1
+             /rsyncgenerator: rsync upload not requested/ ||
+             /restful: station will register with/ ||
+             /restful: Registration interval/ ||
+             /\*\*\*\*  Registration interval/ ||
+             /restful: Registration successful/ ||
+             /restful: Attempting to register/ ||
+             /stats: Back calculated schema/ ||
+             /stats: Backfilling stats database/ ||
+             /stats: backfilled \d+ days of statistics/ ||
+             /stats: stats database up to date/ ||
+             /stats: Created schema for statistical database/ ||
+             /stats: Schema exists with/ ||
+             /\*\*\*\*  \'station\'/ ||
+             /\*\*\*\* required parameter \'\'station\'\'/ ||
+             /\*\*\*\*  Waiting 60 seconds then retrying/ ||
+             /engine: The archive interval in the configuration file/ ||
+             /engine: Station does not support reading the time/ ||
+             /engine: Starting main packet loop/ ||
+             /engine: Shut down StdReport thread/ ||
+             /engine: Shut down StdRESTful thread/ ||
+             /engine: Shutting down StdReport thread/ ||
+             /engine: Loading service/ ||
+             /engine: Finished loading service/ ||
+             /engine: Using archive interval of/ ||
+             /engine: Using archive database/ ||
+             /engine: Using configuration file/ ||
+             /engine: Using stats database/ ||
+             /engine: Using station hardware archive interval/ ||
+             /engine: Using config file archive interval of/ ||
+             /engine: Record generation will be attempted in/ ||
+             /engine: StdConvert target unit is/ ||
+             /engine: Data will not be posted to/ ||
+             /engine: Data will be posted to / ||
+             /engine: Started thread for RESTful upload sites./ ||
+             /engine: No RESTful upload sites/ ||
+             /engine: Loading station type/ ||
+             /engine: Initializing weewx version/ ||
+             /engine: Initializing engine/ ||
+             /engine: Using Python/ ||
+             /engine: Terminating weewx version/ ||
+             /engine: PID file is / ||
+             /engine: Use LOOP data in/ ||
+             /engine: Received signal/ ||
+             /engine: Daily summaries up to date/ ||
+             /engine: Using binding/ ||
+             /engine: Archive will use/ ||
+             /engine: Platform/ ||
+             /engine: Locale is/ ||
+             /wxservices: The following values will be calculated:/ ||
+             /wxservices: The following algorithms will be used for calculations:/ ||
+             /manager: Starting backfill of daily summaries/ ||
+             /manager: Created daily summary tables/ ||
+             /cheetahgenerator: Running / ||
+             /cheetahgenerator: skip/ ||
+             /VantagePro: Catch up complete/ ||
+             /VantagePro: successfully woke up console/ ||
+             /VantagePro: Getting archive packets since/ ||
+             /VantagePro: Retrieving/ ||
+             /VantagePro: DMPAFT complete/ ||
+             /VantagePro: Requesting \d+ LOOP packets/ ||
+             /VantagePro: Clock set to/ ||
+             /VantagePro: Opened up serial port/ ||
+             /owfss: interface is/ ||
+             /owfss: sensor map is/ ||
+             /owfss: sensor type map is/ ||
+             /acurite: driver version is/ ||
+             /fousb: driver version is/ ||
+             /fousb: found station on USB/ ||
+             /fousb: altitude is/ ||
+             /fousb: archive interval is/ ||
+             /fousb: pressure offset is/ ||
+             /fousb: polling mode is/ ||
+             /fousb: polling interval is/ ||
+             /fousb: using \S+ polling mode/ ||
+             /fousb: ptr changed/ ||
+             /fousb: new ptr/ ||
+             /fousb: new data/ ||
+             /fousb: live synchronised/ ||
+             /fousb: log synchronised/ ||
+             /fousb: log extended/ ||
+             /fousb: delay/ ||
+             /fousb: avoid/ ||
+             /fousb: setting sensor clock/ ||
+             /fousb: setting station clock/ ||
+             /fousb: estimated log time/ ||
+             /fousb: returning archive record/ ||
+             /fousb: packet timestamp/ ||
+             /fousb: log timestamp/ ||
+             /fousb: found \d+ archive records/ ||
+             /fousb: get \d+ records since/ ||
+             /fousb: synchronised to/ ||
+             /fousb: pressures:/ ||
+             /fousb: status / ||
+             /ws28xx: MainThread: driver version is/ ||
+             /ws28xx: MainThread: frequency is/ ||
+             /ws28xx: MainThread: altitude is/ ||
+             /ws28xx: MainThread: pressure offset is/ ||
+             /ws28xx: MainThread: found transceiver/ ||
+             /ws28xx: MainThread: manufacturer: LA CROSSE TECHNOLOGY/ ||
+             /ws28xx: MainThread: product: Weather Direct Light Wireless/ ||
+             /ws28xx: MainThread: interface/ ||
+             /ws28xx: MainThread: base frequency/ ||
+             /ws28xx: MainThread: frequency correction/ ||
+             /ws28xx: MainThread: adjusted frequency/ ||
+             /ws28xx: MainThread: transceiver identifier/ ||
+             /ws28xx: MainThread: transceiver serial/ ||
+             /ws28xx: MainThread: execute/ ||
+             /ws28xx: MainThread: setState/ ||
+             /ws28xx: MainThread: setPreamPattern/ ||
+             /ws28xx: MainThread: setRX/ ||
+             /ws28xx: MainThread: readCfgFlash/ ||
+             /ws28xx: MainThread: setFrequency/ ||
+             /ws28xx: MainThread: setDeviceID/ ||
+             /ws28xx: MainThread: setTransceiverSerialNumber/ ||
+             /ws28xx: MainThread: setCommModeInterval/ ||
+             /ws28xx: MainThread: frequency registers/ ||
+             /ws28xx: MainThread: initTransceiver/ ||
+             /ws28xx: MainThread: startRFThread/ ||
+             /ws28xx: MainThread: stopRFThread/ ||
+             /ws28xx: MainThread: detach kernel driver/ ||
+             /ws28xx: MainThread: release USB interface/ ||
+             /ws28xx: MainThread: claiming USB interface/ ||
+             /ws28xx: MainThread: CCommunicationService.init/ ||
+             /ws28xx: MainThread: Scanning historical records/ ||
+             /ws28xx: MainThread: Scanned/ ||
+             /ws28xx: MainThread: Found/ ||
+             /ws28xx: RFComm: console is paired to device/ ||
+             /ws28xx: RFComm: starting rf communication/ ||
+             /ws28xx: RFComm: stopping rf communication/ ||
+             /ws28xx: RFComm: setTX/ ||
+             /ws28xx: RFComm: setRX/ ||
+             /ws28xx: RFComm: setState/ ||
+             /ws28xx: RFComm: getState/ ||
+             /ws28xx: RFComm: setFrame/ ||
+             /ws28xx: RFComm: getFrame/ ||
+             /ws28xx: RFComm: InBuf/ ||
+             /ws28xx: RFComm: OutBuf/ ||
+             /ws28xx: RFComm: generateResponse: sleep/ ||
+             /ws28xx: RFComm: generateResponse: id/ ||
+             /ws28xx: RFComm: handleCurrentData/ ||
+             /ws28xx: RFComm: handleHistoryData/ ||
+             /ws28xx: RFComm: handleNextAction/ ||
+             /ws28xx: RFComm: handleConfig/ ||
+             /ws28xx: RFComm: buildACKFrame/ ||
+             /ws28xx: RFComm: buildTimeFrame/ ||
+             /ws28xx: RFComm: buildConfigFrame/ ||
+             /ws28xx: RFComm: setCurrentWeather/ ||
+             /ws28xx: RFComm: setHistoryData/ ||
+             /ws28xx: RFComm: setDeviceCS/ ||
+             /ws28xx: RFComm: setRequestType/ ||
+             /ws28xx: RFComm: setResetMinMaxFlags/ ||
+             /ws28xx: RFComm: setLastStatCache/ ||
+             /ws28xx: RFComm: setLastConfigTime/ ||
+             /ws28xx: RFComm: setLastHistoryIndex/ ||
+             /ws28xx: RFComm: setLastHistoryDataTime/ ||
+             /ws28xx: RFComm: CCurrentWeatherData.read/ ||
+             /ws28xx: RFComm: CWeatherStationConfig.read/ ||
+             /ws28xx: RFComm: CHistoryDataSet.read/ ||
+             /ws28xx: RFComm: testConfigChanged/ ||
+             /ws28xx: RFComm: SetTime/ ||
+             /ws23xx: driver version is / ||
+             /ws23xx: polling interval is / ||
+             /ws23xx: station archive interval is / ||
+             /ws23xx: using computer clock with / ||
+             /ws23xx: using \d+ sec\S* polling interval/ ||
+             /ws23xx: windchill will be / ||
+             /ws23xx: dewpoint will be / ||
+             /ws23xx: pressure offset is / ||
+             /ws23xx: serial port is / ||
+             /ws23xx: downloading \d+ records from station/ ||
+             /ws23xx: count is \d+ to satisfy timestamp/ ||
+             /ws23xx: windchill: / ||
+             /ws23xx: dewpoint: / ||
+             /ws23xx: station clock is / ||
+             /te923: driver version is / ||
+             /te923: polling interval is / ||
+             /te923: windchill will be / ||
+             /te923: sensor map is / ||
+             /te923: battery map is / ||
+             /te923: Found device on USB/ ||
+             /te923: TMP\d / ||
+             /te923: UVX / ||
+             /te923: PRS / ||
+             /te923: WGS / ||
+             /te923: WSP / ||
+             /te923: WDR / ||
+             /te923: RAIN / ||
+             /te923: WCL / ||
+             /te923: STT / ||
+             /te923: Bad read \(attempt \d of/ ||   # normal when debugging
+             /te923: usb error.* No data available/ || # normal when debug=1
+             /cc3000: Archive interval:/ ||
+             /cc3000: Calculated checksum/ ||
+             /cc3000: Channel:/ ||
+             /cc3000: Charger status:/ ||
+             /cc3000: Clear logger at/ ||
+             /cc3000: Clear memory/ ||
+             /cc3000: Close serial port/ ||
+             /cc3000: Downloaded \d+ new records/ ||
+             /cc3000: Downloaded \d+ records, yielded \d+/ ||
+             /cc3000: Downloading new records/ ||
+             /cc3000: Driver version is/ ||
+             /cc3000: Firmware:/ ||
+             /cc3000: Found checksum at/ ||
+             /cc3000: Flush input bugger/ ||
+             /cc3000: Flush output bugger/ ||
+             /cc3000: gen_records: Requested \d+ latest of \d+ records/ ||
+             /cc3000: gen_records_since_ts: Asking for \d+ records/ ||
+             /cc3000: GenStartupRecords: since_ts/ ||
+             /cc3000: Get baro/ ||
+             /cc3000: Get channel/ ||
+             /cc3000: Get charger/ ||
+             /cc3000: Get daylight saving/ ||
+             /cc3000: Get firmware version/ ||
+             /cc3000: Get header/ ||
+             /cc3000: Get logging interval/ ||
+             /cc3000: Get memory status/ ||
+             /cc3000: Get rain total/ ||
+             /cc3000: Get time/ ||
+             /cc3000: Get units/ ||
+             /cc3000: Header:/ ||
+             /cc3000: Memory:/ ||
+             /cc3000: No rain in packet:/ ||
+             /cc3000: Open serial port/ ||
+             /cc3000: Packet:/ ||
+             /cc3000: Parsed:/ ||
+             /cc3000: Polling interval is/ ||
+             /cc3000: Read:/ ||
+             /cc3000: Reset rain counter/ ||
+             /cc3000: Sensor map is/ ||
+             /cc3000: Set barometer offset to/ ||
+             /cc3000: Set channel to/ ||
+             /cc3000: Set DST to/ ||
+             /cc3000: Set echo to/ ||
+             /cc3000: Set logging interval to/ ||
+             /cc3000: Set units to/ ||
+             /cc3000: Units:/ ||
+             /cc3000: Using computer time/ ||
+             /cc3000: Using serial port/ ||
+             /cc3000: Using station time/ ||
+             /cc3000: Values:/ ||
+             /cc3000: Write:/ ||
+             /owfs: driver version is / ||
+             /owfs: interface is / ||
+             /owfs: polling interval is / ||
+             /owfs: sensor map is / ||
+             /cmon: service version is/ ||
+             /cmon: cpuinfo: / ||
+             /cmon: sysinfo: / ||
+             /cmon: Skipping record/ ||
+             /forecast: .* starting thread/ ||
+             /forecast: .* terminating thread/ ||
+             /forecast: .* not yet time to do the forecast/ ||
+             /forecast: .* last forecast issued/ ||
+             /forecast: .* using table/ ||
+             /forecast: .* tstr=/ ||
+             /forecast: .* interval=\d+ max_age=/ ||
+             /forecast: .* deleted forecasts/ ||
+             /forecast: .* saved \d+ forecast records/ ||
+             /forecast: ZambrettiThread: Zambretti: generating/ ||
+             /forecast: ZambrettiThread: Zambretti: pressure/ ||
+             /forecast: ZambrettiThread: Zambretti: code is/ ||
+             /forecast: NWSThread: NWS: forecast matrix/ ||
+             /forecast: XTideThread: XTide: tide matrix/ ||
+             /forecast: XTideThread: XTide: generating tides/ ||
+             /forecast: XTideThread: XTide: got no tidal events/ ||
+             /forecast: .*: forecast version/ ||
+             /restx: StationRegistry: Station will/ ||
+             /restx: StationRegistry: Registration not requested/ ||
+             /restx: .*Data will be uploaded/ ||
+             /restx: .*wait interval/ ||
+             /restx: Shut down/ ||
+             /restx: \S+: Data will not be posted/ ||
+             /restx: \S+: service version is/ ||
+             /restx: \S+: skipping upload/ ||
+             /restx: \S+: desired unit system is/ ||
+             /restx: AWEKAS: Posting not enabled/ ||
+             /restx: Wunderground: Posting not enabled/ ||
+             /restx: PWSweather: Posting not enabled/ ||
+             /restx: CWOP: Posting not enabled/ ||
+             /restx: WOW: Posting not enabled/ ||
+             /restx: AWEKAS: Data for station/ ||
+             /restx: Wunderground: Data for station/ ||
+             /restx: PWSweather: Posting not enabled/ ||
+             /restx: CWOP: Posting not enabled/ ||
+             /restx: WOW: Data for station/ ||
+             /restx: AWEKAS: url/ ||
+             /restx: EmonCMS: url/ ||
+             /restx: EmonCMS: prefix is/ ||
+             /restx: EmonCMS: desired unit system is/ ||
+             /restx: EmonCMS: using specified input map/ ||
+             /restx: MQTT: Topic is/ ||
+             /restx: OWM: data/ ||
+             /restx: SEG: data/ ||
+             /restx: Twitter: binding is/ ||
+             /restx: Twitter: Data will be tweeted/ ||
+             /restx: WeatherBug: url/ ||
+             /restx: Xively: data/ ||
+             /restx: Xively: url/ ||
+             /ftpupload: attempt/ ||
+             /ftpupload: Made directory/ ||
+             /rsyncupload: rsync executed in/ ||
+             /awekas: code/ ||
+             /awekas: read/ ||
+             /awekas: url/ ||
+             /awekas: data/ ||
+             /cosm: code/ ||
+             /cosm: read/ ||
+             /cosm: url/ ||
+             /cosm: data/ ||
+             /emoncms: code/ ||
+             /emoncms: read/ ||
+             /emoncms: data/ ||
+             /emoncms: url/ ||
+             /owm: code/ ||
+             /owm: read/ ||
+             /owm: url/ ||
+             /owm: data/ ||
+             /seg: code/ ||
+             /seg: read/ ||
+             /seg: url/ ||
+             /seg: data/ ||
+             /wbug: code/ ||
+             /wbug: read/ ||
+             /wbug: url/ ||
+             /wbug: data/ ||
+             /GaugeGenerator:/) {
+        # ignore
+    } elsif (! /weewx/) {
+        # ignore
+    } else {
+        push @unmatched, $_;
+    }
+}
+
+if($clockcount > 0) {
+    my $clockskew = $clocksum / $clockcount;
+    print "average station clock skew: $clockskew\n";
+    print "  min: $clockmin max: $clockmax samples: $clockcount\n";
+    print "\n";
+}
+
+foreach my $slabel (sort keys %summaries) {
+    my $s = $summaries{$slabel};
+    if(scalar(keys %$s)) {
+        print "$slabel:\n";
+        foreach my $k (sort keys %$s) {
+            next if $s->{$k} == 0;
+            printf("  %-45s %6d\n", $k, $s->{$k});
+        }
+        print "\n";
+    }
+}
+
+foreach my $k (sort keys %itemized) {
+    report($k, $itemized{$k}) if scalar @{$itemized{$k}} > 0;
+}
+
+report("Unmatched Lines", \@unmatched) if $#unmatched >= 0;
+
+exit 0;
+
+sub report {
+    my($label, $aref, $href) = @_;
+    print "\n$label:\n";
+    foreach my $x (@$aref) {
+        my $str = $x;
+        if ($href && $href->{$x} > 1) {
+            $str .= " ($href->{$x} times)";
+        }
+        print "  $str\n";
+    }
+}
