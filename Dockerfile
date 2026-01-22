@@ -11,7 +11,7 @@ FROM debian:bookworm-slim
   ENV LANG=en_US.UTF-8
 
   # Define build-time dependencies that can be removed after build
-  ARG BUILD_DEPS="wget unzip python3-dev libffi-dev libjpeg-dev gcc g++ build-essential zlib1g-dev"
+  ARG BUILD_DEPS="wget unzip git python3-dev libffi-dev libjpeg-dev gcc g++ build-essential zlib1g-dev"
 
   RUN apt-get update \
       && apt-get install --no-install-recommends -y \
@@ -25,7 +25,6 @@ FROM debian:bookworm-slim
           openssl \
           python3-setuptools \
           locales \
-          git-all \
       && rm -rf /var/lib/apt/lists/* \
       && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
       && echo "en_GB.UTF-8 UTF-8" >> /etc/locale.gen \
@@ -50,10 +49,8 @@ FROM debian:bookworm-slim
           paho-mqtt \
           pyserial \
           pyusb \
+          ephem \
           PyMySQL \
-          numpy \
-          pandas \
-          skyfield \
           db-sqlite3 \
           requests
 
@@ -94,14 +91,6 @@ FROM debian:bookworm-slim
     && wget -O WLLDriver.zip https://github.com/Drealine/weatherlinklive-driver-weewx/releases/download/2022.02.27-2/WLLDriver.zip \
     && python3 ~/weewx/src/weectl.py extension install -y WLLDriver.zip \
     && rm -f WLLDriver.zip \
-    && wget -O weewx-skyfield-almanac.zip https://github.com/roe-dl/weewx-skyfield-almanac/archive/master.zip \
-    && python3 ~/weewx/src/weectl.py extension install -y weewx-skyfield-almanac.zip \
-    && rm -f weewx-skyfield-almanac.zip \
-    # add logging extensions
-    && COPY conf-fragments/*.conf /home/weewx/tmp/conf-fragments/ \
-    && RUN mkdir -p /home/weewx/tmp \
-    && mkdir -p /home/weewx/weewx-data \
-    && cat /home/weewx/tmp/conf-fragments/* >> /home/weewx/weewx-data/weewx.conf \
     # Clean up all temp directories
     && rm -rf /tmp/* /var/tmp/* \
     # Clean up Python bytecode from extensions

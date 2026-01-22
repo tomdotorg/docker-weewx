@@ -1,4 +1,4 @@
-IMAGE_VERSION=5.2.0-4
+IMAGE_VERSION=5.2.0-2
 docker pull mitct02/weewx:$IMAGE_VERSION
 
 export TZ=America/New_York
