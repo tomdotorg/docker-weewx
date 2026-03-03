@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-REV=3
-WEEWX_VERSION=5.2.0
+REV=1
+WEEWX_VERSION=5.3.1
 IMAGE_VERSION=$WEEWX_VERSION-$REV
 
 # Use an array to hold all tags
