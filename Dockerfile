@@ -1,6 +1,5 @@
 FROM python:3.12-slim
 
-  LABEL maintainer="Tom Mitchell <tom@tom.org>"
   ENV TAG=247d228
   ENV WEEWX_ROOT=/home/weewx/weewx-data
   ENV HOME=/home/weewx
