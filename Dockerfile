@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim
+FROM python:3.12-slim
 
   LABEL maintainer="Tom Mitchell <tom@tom.org>"
   ENV TAG=247d228
@@ -9,19 +9,16 @@ FROM debian:bookworm-slim
   ENV LANG=en_US.UTF-8
 
   # Define build-time dependencies that can be removed after build
-  ARG BUILD_DEPS="wget unzip git python3-dev libffi-dev libjpeg-dev gcc g++ build-essential zlib1g-dev"
+  ARG BUILD_DEPS="wget unzip git libffi-dev libjpeg-dev gcc g++ build-essential zlib1g-dev"
 
   RUN apt-get update \
       && apt-get install --no-install-recommends -y \
           $BUILD_DEPS \
-          python3 \
-          python3-pip \
-          python3-venv \
           tzdata \
           rsync \
+          vim \
           openssh-client \
           openssl \
-          python3-setuptools \
           locales \
       && rm -rf /var/lib/apt/lists/* \
       && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
@@ -71,24 +68,14 @@ FROM debian:bookworm-slim
   ## Install extensions
   RUN cd /var/tmp \
     && . /home/weewx/weewx-venv/bin/activate \
-    ## Belchertown extension
-    && wget https://github.com/poblabs/weewx-belchertown/releases/download/weewx-belchertown-1.3.1/weewx-belchertown-release.1.3.1.tar.gz \
-    && tar zxf weewx-belchertown-release.1.3.1.tar.gz \
-    && cd weewx-belchertown-master \
-    && python3 ~/weewx/src/weectl.py extension install -y . \
-    && cd /var/tmp \
-    && rm -rf weewx-belchertown-release.1.3.1.tar.gz weewx-belchertown-master \
+    && python3 ~/weewx/src/weectl.py extension install https://github.com/Jterrettaz/weewx-windy/archive/master.zip --yes \
+    && python3 ~/weewx/src/weectl.py extension install https://github.com/weewx-contrib/weewx-ecowitt_local_http/archive/refs/heads/main.zip --yes \
+    ## Belchertown-new extension
+    && python3 ~/weewx/src/weectl.py extension install https://github.com/uajqq/weewx-belchertown-new/archive/refs/tags/v1.6.zip --yes \
     ## MQTT extension
-    && wget -O weewx-mqtt.zip https://github.com/matthewwall/weewx-mqtt/archive/master.zip \
-    && unzip -q weewx-mqtt.zip \
-    && cd weewx-mqtt-master \
-    && python3 ~/weewx/src/weectl.py extension install -y . \
-    && cd /var/tmp \
-    && rm -rf weewx-mqtt.zip weewx-mqtt-master \
+    && python3 ~/weewx/src/weectl.py extension install https://github.com/matthewwall/weewx-mqtt/archive/master.zip --yes \
     ## WLL Driver
-    && wget -O WLLDriver.zip https://github.com/Drealine/weatherlinklive-driver-weewx/releases/download/2022.02.27-2/WLLDriver.zip \
-    && python3 ~/weewx/src/weectl.py extension install -y WLLDriver.zip \
-    && rm -f WLLDriver.zip \
+    && python3 ~/weewx/src/weectl.py extension install https://github.com/Drealine/weatherlinklive-driver-weewx/releases/download/2022.02.27-2/WLLDriver.zip --yes \
     # Clean up all temp directories
     && rm -rf /tmp/* /var/tmp/* \
     # Clean up Python bytecode from extensions
