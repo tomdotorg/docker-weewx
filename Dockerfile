@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-  ENV TAG=247d228
+  ENV WEEWX_TAG=247d228
   ENV WEEWX_ROOT=/home/weewx/weewx-data
   ENV HOME=/home/weewx
   ENV TZ=America/New_York
@@ -50,7 +50,7 @@ FROM python:3.12-slim
 
   RUN git clone https://github.com/weewx/weewx ~/weewx \
       && cd ~/weewx \
-      && git checkout $TAG \
+      && git checkout $WEEWX_TAG \
       && rm -rf ~/weewx/.git \
       && rm -rf ~/weewx/docs ~/weewx/tests ~/weewx/.github ~/weewx/examples \
       && find /home/weewx/weewx-venv -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true \
@@ -70,7 +70,7 @@ FROM python:3.12-slim
     && python3 ~/weewx/src/weectl.py extension install https://github.com/Jterrettaz/weewx-windy/archive/master.zip --yes \
     && python3 ~/weewx/src/weectl.py extension install https://github.com/weewx-contrib/weewx-ecowitt_local_http/archive/refs/heads/main.zip --yes \
     ## Belchertown-new extension
-    && python3 ~/weewx/src/weectl.py extension install https://github.com/uajqq/weewx-belchertown-new/archive/refs/tags/v1.6.zip --yes \
+    && python3 ~/weewx/src/weectl.py extension install https://github.com/uajqq/weewx-belchertown-new/archive/refs/tags/v1.7-new-belchertown.zip --yes \
     ## MQTT extension
     && python3 ~/weewx/src/weectl.py extension install https://github.com/matthewwall/weewx-mqtt/archive/master.zip --yes \
     ## WLL Driver
