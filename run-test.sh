@@ -1,12 +1,17 @@
-IMAGE_VERSION=5.3.1-5
-docker pull mitct02/weewx:$IMAGE_VERSION
+#!/usr/bin/env bash
+set -euo pipefail
 
-export TZ=America/Los_Angeles
+IMAGE_VERSION=5.3.1-5
+IMAGE=mitct02/weewx:${IMAGE_VERSION}
+TZ=America/Los_Angeles
+DATA=/home/weewx/weewx-data
+
+docker pull "${IMAGE}"
 
 docker run -it --rm \
-    -e TZ=$TZ \
-    -v $(pwd)/weewx.conf:/home/weewx/weewx-data/weewx.conf \
-    -v $(pwd)/public_html:/home/weewx/weewx-data/public_html \
-    -v $(pwd)/archive:/home/weewx/weewx-data/archive \
-    -v $(pwd)/keys:/home/weewx/.ssh \
-    mitct02/weewx:$IMAGE_VERSION $1
+    -e TZ="${TZ}" \
+    -v "$(pwd)/weewx.conf:${DATA}/weewx.conf" \
+    -v "$(pwd)/public_html:${DATA}/public_html" \
+    -v "$(pwd)/archive:${DATA}/archive" \
+    -v "$(pwd)/keys:/home/weewx/.ssh" \
+    "${IMAGE}" "${@}"
