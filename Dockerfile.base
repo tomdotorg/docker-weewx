@@ -11,6 +11,7 @@ RUN apt-get update \
   && apt-get install --no-install-recommends -y \
       $BUILD_DEPS \
       tzdata \
+      sudo \
       rsync \
       vim \
       openssh-client \
@@ -24,6 +25,8 @@ RUN apt-get update \
   && locale-gen \
   && addgroup weewx \
   && useradd -m -g weewx weewx \
+  && echo "weewx ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/weewx \
+  && chmod 0440 /etc/sudoers.d/weewx \
   && chown -R weewx:weewx /home/weewx \
   && chmod -R 755 /home/weewx
 
