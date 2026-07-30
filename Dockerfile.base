@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 ENV WEEWX_ROOT=/home/weewx/weewx-data
 ENV HOME=/home/weewx
 ENV TZ=America/New_York
@@ -45,7 +45,7 @@ RUN . /home/weewx/weewx-venv/bin/activate \
       requests
 
 RUN . /home/weewx/weewx-venv/bin/activate \
-  && pip install weewx==5.3.1 \
+  && pip install weewx==5.4.0 \
   && pip uninstall -y ephem \
   && weectl station create --no-prompt
 
