@@ -13,5 +13,6 @@ cd $WEEWX_ROOT || exit
 while true; do
   . /home/weewx/weewx-venv/bin/activate
   /home/weewx/weewx-venv/bin/weewxd $CONF_FILE > /dev/stdout
+  echo "weewx exited with code $?. Restarting in 60 seconds..."
   sleep 60
 done
