@@ -45,8 +45,7 @@ RUN . /home/weewx/weewx-venv/bin/activate \
       requests
 
 RUN . /home/weewx/weewx-venv/bin/activate \
-  && pip install weewx==5.4.0 \
-  && pip uninstall -y ephem \
+  && pip install weewx==5.5.0 \
   && weectl station create --no-prompt
 
 USER root

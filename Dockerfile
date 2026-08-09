@@ -1,4 +1,4 @@
-FROM mitct02/weewx-base:5.4.0
+FROM mitct02/weewx-base:5.5.0
 ENV WEEWX_ROOT=/home/weewx/weewx-data
 
 COPY conf-fragments/*.conf /home/weewx/tmp/conf-fragments/
@@ -16,7 +16,7 @@ RUN mkdir -p /home/weewx/tmp \
 # Rebuild the zip with: ./mkext.sh uajqq/weewx-belchertown-new <sha> belchertown-new
 # --chown matters: the build runs as weewx, /var/tmp is sticky, and a
 # root-owned file there cannot be unlinked by the cleanup step below.
-COPY --chown=weewx:weewx extensions/belchertown-new.zip /var/tmp/belchertown-new.zip
+#COPY --chown=weewx:weewx extensions/belchertown-new.zip /var/tmp/belchertown-new.zip
 RUN set -e \
 && cd /var/tmp \
 && . /home/weewx/weewx-venv/bin/activate \
@@ -26,11 +26,11 @@ RUN set -e \
      echo "$out"; \
      echo "$out" | grep -q "Finished installing extension" || { echo "ERROR: extension install did not complete: $1" >&2; exit 1; }; \
    } \
-&& install_ext https://github.com/chaunceygardiner/weewx-skyfield/archive/refs/tags/v1.14.zip \
+&& install_ext https://github.com/chaunceygardiner/weewx-skyfield/archive/refs/tags/v1.19.zip \
 && install_ext https://github.com/Jterrettaz/weewx-windy/archive/master.zip \
 && install_ext https://github.com/weewx-contrib/weewx-ecowitt_local_http/archive/refs/heads/main.zip \
 ## Belchertown-new extension (pinned commit, see COPY above) \
-&& install_ext /var/tmp/belchertown-new.zip \
+&& install_ext https://github.com/uajqq/weewx-belchertown-new/archive/refs/tags/v2.1beta4.zip \
 ## MQTT extension \
 && install_ext https://github.com/matthewwall/weewx-mqtt/archive/master.zip \
 ## WLL Driver \

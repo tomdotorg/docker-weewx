@@ -22,7 +22,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-WEEWX_VERSION=5.4.0
+WEEWX_VERSION=5.5.0
 IMAGE=mitct02/weewx
 PLATFORMS=linux/arm/v7,linux/arm64/v8,linux/amd64
 COUNTER_FILE=.build-number
@@ -30,7 +30,7 @@ COUNTER_FILE=.build-number
 MODE=dev
 NUM=
 FRESH=false
-LATEST=false
+LATEST=true
 
 while [ $# -gt 0 ]; do
   case "$1" in
