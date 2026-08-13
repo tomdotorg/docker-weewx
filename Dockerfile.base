@@ -35,6 +35,15 @@ USER weewx
 RUN python3 -m venv /home/weewx/weewx-venv \
   && chmod -R 755 /home/weewx
 
+# Deliberately unpinned. build-base.sh builds with the layer cache, and
+# Docker keys that cache on this RUN's text plus the parent layer — never on
+# what pip resolves. So an unchanged line here is a cache hit, pip does not
+# run, and the layer digest stays stable, which is what keeps a later publish
+# from re-uploading the whole base.
+# The flip side: these versions do not move on their own. To pick up new
+# ones, force this layer to rebuild — `./build-base.sh` with --no-cache
+# added, or edit this line. Expect a full re-upload when you do; that upload
+# is real new content, not churn.
 RUN . /home/weewx/weewx-venv/bin/activate \
   && python3 -m pip install --no-cache-dir \
       numpy \

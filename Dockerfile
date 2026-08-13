@@ -26,7 +26,7 @@ RUN set -e \
      echo "$out"; \
      echo "$out" | grep -q "Finished installing extension" || { echo "ERROR: extension install did not complete: $1" >&2; exit 1; }; \
    } \
-&& install_ext https://github.com/chaunceygardiner/weewx-skyfield/archive/refs/tags/v1.19.zip \
+&& install_ext https://github.com/chaunceygardiner/weewx-skyfield/archive/refs/tags/v2.1.zip \
 && install_ext https://github.com/Jterrettaz/weewx-windy/archive/master.zip \
 && install_ext https://github.com/weewx-contrib/weewx-ecowitt_local_http/archive/refs/heads/main.zip \
 ## Belchertown-new extension (pinned commit, see COPY above) \

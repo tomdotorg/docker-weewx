@@ -8,16 +8,21 @@
 # The build number lives in .build-number and auto-increments on each dev
 # build. It resets to 1 whenever WEEWX_VERSION changes.
 #
-#   ./build.sh                   build+push the next dev build   (5.4.0-13)
+#   ./build.sh                   build the next dev build, local only (5.4.0-13)
+#   ./build.sh --push            ... and push it to the registry
 #   ./build.sh -n 12             rebuild a specific dev number   (5.4.0-12)
 #   ./build.sh release           promote the last dev build to GA (5.4.0)
 #   ./build.sh release 12        promote a specific dev build to GA
 #   ./build.sh release --build   build GA fresh instead of promoting
 #   ./build.sh release --latest  also move the :latest tag
 #
+# Pushing is for publishing only. Dev builds stay in the local image store,
+# so the usual test loop costs no upload at all. Release always pushes.
+#
 # "release" retags an existing dev manifest rather than rebuilding, so the
-# GA image is byte-identical to the dev build you actually tested. Use
-# --build only when there is no dev build to promote.
+# GA image is byte-identical to the dev build you actually tested. That
+# retag happens registry-side, so the dev build you intend to promote must
+# have been built with --push. Use --build when there is none to promote.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -30,7 +35,8 @@ COUNTER_FILE=.build-number
 MODE=dev
 NUM=
 FRESH=false
-LATEST=true
+LATEST=false
+PUSH=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -38,11 +44,16 @@ while [ $# -gt 0 ]; do
     -n|--number) [ $# -ge 2 ] || { echo "-n needs a number" >&2; exit 2; }; NUM=$2; shift 2 ;;
     --build) FRESH=true; shift ;;
     --latest) LATEST=true; shift ;;
-    -h|--help) sed -n '3,22p' "$0" | sed 's/^#\ \?//'; exit 0 ;;
+    --push) PUSH=true; shift ;;
+    # \? is a GNU extension; macOS ships BSD sed, so spell it \{0,1\}.
+    -h|--help) sed -n '3,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     [0-9]*) NUM=$1; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+# Releasing is publishing, so it always pushes regardless of --push.
+[ "$MODE" = release ] && PUSH=true
 
 # .build-number holds "<version> <counter>" so the counter resets on a
 # WEEWX_VERSION bump instead of silently continuing the old series.
@@ -57,12 +68,24 @@ read_counter() {
 
 build() {
   local version=$1; shift
-  local tag_args=()
+  local tag_args=() out_args=()
   for t in "$@"; do tag_args+=(-t "$IMAGE:$t"); done
 
-  echo "==> Building $IMAGE:$1"
+  # Without --push the build lands in the local containerd image store,
+  # multi-platform and all. That needs Docker Desktop's containerd image
+  # store enabled (Settings > General); with the old store, a multi-platform
+  # build has nowhere local to go and buildx will refuse.
+  if $PUSH; then out_args+=(--push); fi
+
+  echo "==> Building $IMAGE:$1$($PUSH && echo ' (push)' || echo ' (local only)')"
+  # Do not add --pull. The only FROM is mitct02/weewx-base, an internal
+  # artifact that build-base.sh leaves in the local image store and never
+  # pushes; --pull would resolve it from the registry and fail with
+  # "not found". --no-cache already forces every layer here to rebuild.
+  # ${a[@]+"${a[@]}"} not "${a[@]}": under set -u, expanding an empty array
+  # is an "unbound variable" error on bash 3.2, which is what macOS ships.
   BUILDKIT_COLORS="run=123,20,245:error=yellow:cancel=blue:warning=white" \
-  docker buildx build --no-cache --push --platform "$PLATFORMS" \
+  docker buildx build --no-cache ${out_args[@]+"${out_args[@]}"} --platform "$PLATFORMS" \
     --build-arg "IMAGE_VERSION=$version" \
     "${tag_args[@]}" .
 }
@@ -74,8 +97,14 @@ if [ "$MODE" = dev ]; then
   build "$VERSION" "$VERSION"
 
   printf '%s %s\n' "$WEEWX_VERSION" "$NUM" > "$COUNTER_FILE"
-  echo "==> Pushed $IMAGE:$VERSION"
-  echo "    Promote to GA once tested:  ./build.sh release $NUM"
+  if $PUSH; then
+    echo "==> Pushed $IMAGE:$VERSION"
+    echo "    Promote to GA once tested:  ./build.sh release $NUM"
+  else
+    echo "==> Built $IMAGE:$VERSION (local image store, not pushed)"
+    echo "    Publish it:                 ./build.sh -n $NUM --push"
+    echo "    Then promote to GA:         ./build.sh release $NUM"
+  fi
 
 else
   TAGS=("$WEEWX_VERSION")
@@ -94,6 +123,17 @@ else
     SRC=$IMAGE:$WEEWX_VERSION-$NUM
     to_args=()
     for t in "${TAGS[@]}"; do to_args+=(-t "$IMAGE:$t"); done
+
+    # imagetools retags registry-side, so a dev build that was only built
+    # locally cannot be promoted. Say so plainly instead of letting the
+    # retag fail with a bare manifest-unknown.
+    if ! docker buildx imagetools inspect "$SRC" >/dev/null 2>&1; then
+      echo "ERROR: $SRC is not in the registry." >&2
+      echo "       Dev builds are local-only unless built with --push." >&2
+      echo "       Push it:  ./build.sh -n $NUM --push" >&2
+      echo "       Or build GA fresh:  ./build.sh release --build" >&2
+      exit 1
+    fi
 
     echo "==> Promoting $SRC -> ${TAGS[*]}"
     docker buildx imagetools create "${to_args[@]}" "$SRC"
