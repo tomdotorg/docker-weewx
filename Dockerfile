@@ -1,4 +1,4 @@
-FROM mitct02/weewx-base:5.5.0
+FROM mitct02/weewx-base:5.5.2
 ENV WEEWX_ROOT=/home/weewx/weewx-data
 
 COPY conf-fragments/*.conf /home/weewx/tmp/conf-fragments/
@@ -26,10 +26,11 @@ RUN set -e \
      echo "$out"; \
      echo "$out" | grep -q "Finished installing extension" || { echo "ERROR: extension install did not complete: $1" >&2; exit 1; }; \
    } \
-&& install_ext https://github.com/chaunceygardiner/weewx-skyfield/archive/refs/tags/v2.1.zip \
+&& install_ext https://github.com/chaunceygardiner/weewx-skyfield/releases/download/v2.7.1/weewx-skyfield.zip \
 && install_ext https://github.com/Jterrettaz/weewx-windy/archive/master.zip \
 && install_ext https://github.com/weewx-contrib/weewx-ecowitt_local_http/archive/refs/heads/main.zip \
-## Belchertown-new extension (pinned commit, see COPY above) \
+## Belchertown-new extension: 2.1beta4 (v2.0 lacks nav-menu-custom.inc support, \
+## which the site Sky links need; 2.1beta3 had performance problems) \
 && install_ext https://github.com/uajqq/weewx-belchertown-new/archive/refs/tags/v2.1beta4.zip \
 ## MQTT extension \
 && install_ext https://github.com/matthewwall/weewx-mqtt/archive/master.zip \

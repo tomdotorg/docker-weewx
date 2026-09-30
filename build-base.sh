@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Rebuild when: python version, weewx version, or pip deps (numpy/pandas/skyfield/etc.) change.
 # Rarely needed — most builds should use build.sh instead.
-WEEWX_VERSION=5.5.0
+WEEWX_VERSION=5.5.2
 BASE_TAG="mitct02/weewx-base:$WEEWX_VERSION"
 
 # No --push: the base is an internal artifact and stays in the local image
